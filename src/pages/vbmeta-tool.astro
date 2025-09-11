@@ -1,0 +1,643 @@
+---
+// src/pages/vbmeta-tool.astro
+import MainGridLayout from '/src/layouts/MainGridLayout.astro';
+
+const title = "VBMeta 工具";
+const description = "批量处理禁用校验的 vbmeta 镜像文件";
+---
+
+<MainGridLayout {title} {description}>
+  <div class="container">
+    <h1>{title}</h1>
+    <p>{description}</p>
+    
+    <div class="tool-container">
+      <!-- 多文件上传区域 -->
+      <div class="upload-area" id="dropZone">
+        <input type="file" id="fileInput" accept=".img,.bin" multiple style="display: none;">
+        <div class="upload-content">
+          <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+          </svg>
+          <p class="upload-text">点击或拖放文件到此处上传</p>
+          <p class="upload-hint">支持 .img 和 .bin 格式文件（最多6个）</p>
+          <button onclick="document.getElementById('fileInput').click()">选择文件</button>
+        </div>
+        <div id="fileList" class="file-list"></div>
+      </div>
+      
+      <!-- 选项区域 -->
+      <div class="options-section">
+        <h3>处理选项</h3>
+        <div class="options-grid">
+          <label>
+            <input type="checkbox" id="disableVerity" checked>
+            禁用 Verity (--disable-verity)
+          </label>
+          <label>
+            <input type="checkbox" id="disableVerification" checked>
+            禁用 Verification (--disable-verification)
+          </label>
+        </div>
+      </div>
+      
+      <!-- 处理按钮 -->
+      <button id="processBtn" class="process-button" disabled>批量处理文件</button>
+      
+      <!-- 控制台输出区域 -->
+      <div class="console-container">
+        <div class="console-header">
+          <h3>处理日志</h3>
+          <button id="clearConsole" class="clear-button">清空</button>
+        </div>
+        <div id="consoleOutput" class="console-output"></div>
+      </div>
+      
+      <!-- 下载区域 -->
+      <div id="downloadArea" class="download-area" style="display: none;">
+        <h3>下载处理后的文件</h3>
+        <div id="downloadList" class="download-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 最大文件数量
+    const MAX_FILES = 6;
+    
+    // 文件处理队列
+    let fileQueue = [];
+    
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      // 文件选择处理
+      document.getElementById('fileInput').addEventListener('change', handleFileSelection);
+      
+      // 拖放功能
+      const dropZone = document.getElementById('dropZone');
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+      
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+      });
+      
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        
+        if (e.dataTransfer.files.length) {
+          document.getElementById('fileInput').files = e.dataTransfer.files;
+          handleFileSelection();
+        }
+      });
+      
+      // 清空控制台按钮
+      document.getElementById('clearConsole').addEventListener('click', () => {
+        document.getElementById('consoleOutput').innerHTML = '';
+      });
+    });
+    
+    function handleFileSelection() {
+      const fileInput = document.getElementById('fileInput');
+      const fileListDiv = document.getElementById('fileList');
+      const processBtn = document.getElementById('processBtn');
+      const files = Array.from(fileInput.files);
+      
+      // 限制文件数量
+      if (files.length > MAX_FILES) {
+        logToConsole(`错误：最多只能上传 ${MAX_FILES} 个文件`, 'error');
+        fileInput.value = '';
+        return;
+      }
+      
+      // 清空文件队列
+      fileQueue = [];
+      fileListDiv.innerHTML = '';
+      
+      if (files.length > 0) {
+        files.forEach(file => {
+          // 添加到文件队列
+          fileQueue.push(file);
+          
+          // 显示文件信息
+          const fileItem = document.createElement('div');
+          fileItem.className = 'file-item';
+          fileItem.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <span class="file-size">(${formatFileSize(file.size)})</span>
+            <span class="file-status" id="status-${file.name}">等待处理</span>
+          `;
+          fileListDiv.appendChild(fileItem);
+        });
+        
+        processBtn.disabled = false;
+        processBtn.classList.remove('disabled');
+      } else {
+        processBtn.disabled = true;
+        processBtn.classList.add('disabled');
+      }
+    }
+    
+    // 处理按钮点击事件
+    document.getElementById('processBtn').addEventListener('click', async function() {
+      if (fileQueue.length === 0) {
+        logToConsole('请先选择文件', 'error');
+        return;
+      }
+      
+      // 禁用处理按钮
+      const processBtn = document.getElementById('processBtn');
+      processBtn.disabled = true;
+      processBtn.classList.add('disabled');
+      
+      // 清空下载区域
+      const downloadArea = document.getElementById('downloadArea');
+      const downloadList = document.getElementById('downloadList');
+      downloadArea.style.display = 'none';
+      downloadList.innerHTML = '';
+      
+      // 显示控制台区域
+      logToConsole('开始批量处理文件...', 'info');
+      
+      // 处理每个文件
+      for (const file of fileQueue) {
+        try {
+          await processFile(file);
+        } catch (error) {
+          logToConsole(`处理 ${file.name} 失败: ${error.message}`, 'error');
+          updateFileStatus(file.name, '处理失败', 'error');
+        }
+      }
+      
+      logToConsole('所有文件处理完成', 'success');
+      processBtn.disabled = false;
+      processBtn.classList.remove('disabled');
+      
+      // 如果有成功处理的文件，显示下载区域
+      if (document.querySelector('.download-item')) {
+        downloadArea.style.display = 'block';
+      }
+    });
+    
+    async function processFile(file) {
+      logToConsole(`开始处理文件: ${file.name}`, 'info');
+      updateFileStatus(file.name, '处理中...', 'processing');
+      
+      // 读取文件
+      const arrayBuffer = await file.arrayBuffer();
+      logToConsole(`读取文件完成: ${file.name} (${formatFileSize(file.size)})`, 'info');
+      
+      // 检查文件大小
+      if (arrayBuffer.byteLength < 256) {
+        throw new Error('文件太小，不是有效的vbmeta镜像');
+      }
+      
+      const dataView = new DataView(arrayBuffer);
+      
+      // 检查AVB魔数
+      const avbMagic = "AVB0";
+      for (let i = 0; i < avbMagic.length; i++) {
+        if (dataView.getUint8(i) !== avbMagic.charCodeAt(i)) {
+          throw new Error('文件格式无效，不是vbmeta镜像');
+        }
+      }
+      
+      // 检查当前状态
+      const flagsOffset = 123; // vbmeta镜像中flags字段的偏移量
+      const currentFlagsByte = dataView.getUint8(flagsOffset);
+      const isVerityDisabled = (currentFlagsByte & 0x01) !== 0;
+      const isVerificationDisabled = (currentFlagsByte & 0x02) !== 0;
+      
+      logToConsole(`检测到当前状态: Verity ${isVerityDisabled ? '已禁用' : '已启用'}, Verification ${isVerificationDisabled ? '已禁用' : '已启用'}`, 'info');
+      
+      // 如果已经禁用，跳过处理
+      const disableVerity = document.getElementById('disableVerity').checked;
+      const disableVerification = document.getElementById('disableVerification').checked;
+      
+      if ((disableVerity && isVerityDisabled) && (disableVerification && isVerificationDisabled)) {
+        logToConsole(`文件 ${file.name} 已经禁用所有校验，无需处理`, 'warning');
+        updateFileStatus(file.name, '无需处理', 'warning');
+        return;
+      }
+      
+      // 修改标志位
+      let newFlagsByte = currentFlagsByte;
+      
+      if (disableVerity) {
+        newFlagsByte |= 0x01; // 设置第0位 (0000 0001)
+      }
+      if (disableVerification) {
+        newFlagsByte |= 0x02; // 设置第1位 (0000 0010)
+      }
+      
+      dataView.setUint8(flagsOffset, newFlagsByte);
+      
+      // 创建新文件
+      const modifiedBlob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+      const downloadUrl = URL.createObjectURL(modifiedBlob);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const downloadFilename = `vbmeta_disabled_${timestamp}.${file.name.split('.').pop()}`;
+      
+      // 添加到下载列表
+      addToDownloadList(file.name, downloadFilename, downloadUrl);
+      
+      logToConsole(`文件 ${file.name} 处理成功`, 'success');
+      updateFileStatus(file.name, '处理成功', 'success');
+    }
+    
+    function addToDownloadList(originalName, downloadName, downloadUrl) {
+      const downloadList = document.getElementById('downloadList');
+      const downloadItem = document.createElement('div');
+      downloadItem.className = 'download-item';
+      downloadItem.innerHTML = `
+        <div class="download-info">
+          <span class="original-name">${originalName}</span>
+          <span class="download-name">${downloadName}</span>
+        </div>
+        <a href="${downloadUrl}" download="${downloadName}" class="download-button">
+          下载
+        </a>
+      `;
+      downloadList.appendChild(downloadItem);
+      
+      // 清理URL对象
+      const downloadLink = downloadItem.querySelector('a');
+      downloadLink.addEventListener('click', () => {
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
+      });
+    }
+    
+    function logToConsole(message, type = 'info') {
+      const consoleOutput = document.getElementById('consoleOutput');
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      
+      // 添加时间戳
+      const now = new Date();
+      const timestamp = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
+      
+      // 添加日志类型图标
+      let icon = 'ℹ️';
+      if (type === 'error') icon = '❌';
+      else if (type === 'success') icon = '✅';
+      else if (type === 'warning') icon = '⚠️';
+      else if (type === 'processing') icon = '⏳';
+      
+      logEntry.innerHTML = `
+        <span class="log-timestamp">${timestamp}</span>
+        <span class="log-icon">${icon}</span>
+        <span class="log-message">${message}</span>
+      `;
+      
+      consoleOutput.appendChild(logEntry);
+      
+      // 自动滚动到底部
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+    
+    function updateFileStatus(fileName, status, type) {
+      const statusElement = document.getElementById(`status-${fileName}`);
+      if (statusElement) {
+        statusElement.textContent = status;
+        statusElement.className = `file-status ${type}`;
+      }
+    }
+    
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      else return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+  </script>
+
+  <style>
+    :root {
+      --primary-color: #8b5cf6;
+      --text-primary: #374151;
+      --text-secondary: #6b7280;
+      --bg-light: #f9fafb;
+      --border-color: #e5e7eb;
+      --success-color: #10b981;
+      --error-color: #ef4444;
+      --warning-color: #f59e0b;
+      --processing-color: #3b82f6;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+    
+    .tool-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      padding: 2rem;
+      margin-top: 1.5rem;
+    }
+    
+    .upload-area {
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+      background-color: var(--bg-light);
+      transition: all 0.3s ease;
+    }
+    
+    .upload-area.drag-over {
+      border-color: var(--primary-color);
+      background-color: rgba(139, 92, 246, 0.05);
+    }
+    
+    .upload-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .upload-icon {
+      width: 48px;
+      height: 48px;
+      color: var(--primary-color);
+      margin-bottom: 1rem;
+    }
+    
+    .upload-text {
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    
+    .upload-hint {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s ease;
+    }
+    
+    button:hover {
+      background-color: #7c3aed;
+    }
+    
+    .file-list {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .file-item {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem;
+      background-color: var(--bg-light);
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+    
+    .file-name {
+      font-weight: 500;
+      margin-right: 0.5rem;
+    }
+    
+    .file-size {
+      color: var(--text-secondary);
+      margin-right: 1rem;
+    }
+    
+    .file-status {
+      margin-left: auto;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .file-status.processing {
+      background-color: rgba(59, 130, 246, 0.1);
+      color: var(--processing-color);
+    }
+    
+    .file-status.success {
+      background-color: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+    
+    .file-status.error {
+      background-color: rgba(239, 68, 68, 0.1);
+      color: var(--error-color);
+    }
+    
+    .file-status.warning {
+      background-color: rgba(245, 158, 11, 0.1);
+      color: var(--warning-color);
+    }
+    
+    .options-section {
+      margin-bottom: 1.5rem;
+    }
+    
+    .options-section h3 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+    
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    
+    .options-grid label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      padding: 0.75rem;
+      background-color: var(--bg-light);
+      border-radius: 6px;
+      transition: background-color 0.2s ease;
+    }
+    
+    .options-grid label:hover {
+      background-color: #f3f4f6;
+    }
+    
+    input[type="checkbox"] {
+      width: 1.2rem;
+      height: 1.2rem;
+      accent-color: var(--primary-color);
+    }
+    
+    .process-button {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.125rem;
+      font-weight: 600;
+      background-color: var(--success-color);
+      margin-bottom: 1.5rem;
+    }
+    
+    .process-button:hover {
+      background-color: #059669;
+    }
+    
+    .process-button.disabled {
+      background-color: #9ca3af;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    
+    .console-container {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background-color: var(--bg-light);
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .console-header h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    
+    .clear-button {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      padding: 0.25rem 0.5rem;
+    }
+    
+    .clear-button:hover {
+      color: var(--primary-color);
+    }
+    
+    .console-output {
+      height: 300px;
+      overflow-y: auto;
+      padding: 1rem;
+      background-color: #1e293b;
+      color: #f1f5f9;
+      font-family: monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    
+    .log-entry {
+      padding: 0.25rem 0;
+    }
+    
+    .log-entry.info {
+      color: #93c5fd;
+    }
+    
+    .log-entry.success {
+      color: #6ee7b7;
+    }
+    
+    .log-entry.error {
+      color: #fca5a5;
+    }
+    
+    .log-entry.warning {
+      color: #fde68a;
+    }
+    
+    .log-entry.processing {
+      color: #93c5fd;
+    }
+    
+    .log-timestamp {
+      color: #94a3b8;
+      margin-right: 0.5rem;
+    }
+    
+    .log-icon {
+      margin-right: 0.5rem;
+    }
+    
+    .download-area {
+      background-color: var(--bg-light);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    
+    .download-area h3 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }
+    
+    .download-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .download-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      background-color: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    
+    .download-info {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .original-name {
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+    
+    .download-name {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+    
+    .download-button {
+      background-color: var(--success-color);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: background-color 0.2s ease;
+    }
+    
+    .download-button:hover {
+      background-color: #059669;
+    }
+  </style>
+</MainGridLayout>

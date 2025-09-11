@@ -20,14 +20,13 @@ export interface Project {
 export const projectsData: Project[] = [
 	{
 		id: "jqqd",
-		title: "尽情期待",
+		title: "VBMeta在线工具",
 		description:
-			"喵喵喵",
+			"VBMeta 分区校验机制",
 		image: "",
-		category: "desktop",
+		category: "web",
 		techStack: [],
-		status: "planned",
-		liveDemo: "https://blog.example.com",
+		status: "completed",
 		sourceCode: "",
 		startDate: "",
 		endDate: "",

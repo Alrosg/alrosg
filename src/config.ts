@@ -201,10 +201,15 @@ export const navBarConfig: NavBarConfig = {
 					url: "/projects/",
 					icon: "material-symbols:work",
 				},
+				{
+					name: "VBMeta 工具",
+					url: "/vbmeta-tool/",
+					icon: "material-symbols:construction", // 使用与工具相关的图标
+				},
 			],
-		},
-	],
-};
+		}, // 添加逗号
+	], // 结束 links 数组
+}; // 结束 navBarConfig 对象
 
 export const profileConfig: ProfileConfig = {
 	avatar: "assets/images/avatar.jpg", // 相对于 /src 目录。如果以 '/' 开头，则相对于 /public 目录
