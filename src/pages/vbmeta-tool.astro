@@ -12,51 +12,60 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
     <p>{description}</p>
     
     <div class="tool-container">
-      <!-- 多文件上传区域 -->
-      <div class="upload-area" id="dropZone">
-        <input type="file" id="fileInput" accept=".img,.bin" multiple style="display: none;">
-        <div class="upload-content">
-          <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-          </svg>
-          <p class="upload-text">点击或拖放文件到此处上传</p>
-          <p class="upload-hint">支持 .img 和 .bin 格式文件（最多6个）</p>
-          <button onclick="document.getElementById('fileInput').click()">选择文件</button>
+      <!-- 左右布局容器 -->
+      <div class="two-column-layout">
+        <!-- 左侧列：文件上传和列表 -->
+        <div class="left-column">
+          <!-- 多文件上传区域 -->
+          <div class="upload-area" id="dropZone">
+            <input type="file" id="fileInput" accept=".img,.bin" multiple style="display: none;">
+            <div class="upload-content">
+              <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+              </svg>
+              <p class="upload-text">点击或拖放文件到此处上传</p>
+              <p class="upload-hint">支持 .img 和 .bin 格式文件（最多6个）</p>
+              <button id="selectFileBtn">选择文件</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+          </div>
+          
+          <!-- 选项区域 -->
+          <div class="options-section">
+            <h3>处理选项</h3>
+            <div class="options-grid">
+              <label>
+                <input type="checkbox" id="disableVerity" checked>
+                禁用 Verity (--disable-verity)
+              </label>
+              <label>
+                <input type="checkbox" id="disableVerification" checked>
+                禁用 Verification (--disable-verification)
+              </label>
+            </div>
+          </div>
+          
+          <!-- 处理按钮 -->
+          <button id="processBtn" class="process-button" disabled>批量处理文件</button>
         </div>
-        <div id="fileList" class="file-list"></div>
-      </div>
-      
-      <!-- 选项区域 -->
-      <div class="options-section">
-        <h3>处理选项</h3>
-        <div class="options-grid">
-          <label>
-            <input type="checkbox" id="disableVerity" checked>
-            禁用 Verity (--disable-verity)
-          </label>
-          <label>
-            <input type="checkbox" id="disableVerification" checked>
-            禁用 Verification (--disable-verification)
-          </label>
+        
+        <!-- 右侧列：控制台和下载 -->
+        <div class="right-column">
+          <!-- 控制台输出区域 -->
+          <div class="console-container">
+            <div class="console-header">
+              <h3>处理日志</h3>
+              <button id="clearConsole" class="clear-button">清空</button>
+            </div>
+            <div id="consoleOutput" class="console-output"></div>
+          </div>
+          
+          <!-- 下载区域 -->
+          <div id="downloadArea" class="download-area" style="display: none;">
+            <h3>下载处理后的文件</h3>
+            <div id="downloadList" class="download-list"></div>
+          </div>
         </div>
-      </div>
-      
-      <!-- 处理按钮 -->
-      <button id="processBtn" class="process-button" disabled>批量处理文件</button>
-      
-      <!-- 控制台输出区域 -->
-      <div class="console-container">
-        <div class="console-header">
-          <h3>处理日志</h3>
-          <button id="clearConsole" class="clear-button">清空</button>
-        </div>
-        <div id="consoleOutput" class="console-output"></div>
-      </div>
-      
-      <!-- 下载区域 -->
-      <div id="downloadArea" class="download-area" style="display: none;">
-        <h3>下载处理后的文件</h3>
-        <div id="downloadList" class="download-list"></div>
       </div>
     </div>
   </div>
@@ -68,71 +77,156 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
     // 文件处理队列
     let fileQueue = [];
     
-    // 初始化
-    document.addEventListener('DOMContentLoaded', function() {
+    // 初始化函数
+    function initVBMetaTool() {
       // 文件选择处理
-      document.getElementById('fileInput').addEventListener('change', handleFileSelection);
+      const fileInput = document.getElementById('fileInput');
+      const selectFileBtn = document.getElementById('selectFileBtn');
+      
+      if (fileInput && selectFileBtn) {
+        selectFileBtn.addEventListener('click', function() {
+          fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', handleFileSelection);
+      }
       
       // 拖放功能
       const dropZone = document.getElementById('dropZone');
-      dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-      });
-      
-      dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
-      });
-      
-      dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
+      if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dropZone.classList.add('drag-over');
+        });
         
-        if (e.dataTransfer.files.length) {
-          document.getElementById('fileInput').files = e.dataTransfer.files;
-          handleFileSelection();
-        }
-      });
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.classList.remove('drag-over');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('drag-over');
+          
+          if (e.dataTransfer.files.length) {
+            handleDroppedFiles(e.dataTransfer.files);
+          }
+        });
+      }
       
       // 清空控制台按钮
-      document.getElementById('clearConsole').addEventListener('click', () => {
-        document.getElementById('consoleOutput').innerHTML = '';
-      });
-    });
-    
-    function handleFileSelection() {
-      const fileInput = document.getElementById('fileInput');
-      const fileListDiv = document.getElementById('fileList');
-      const processBtn = document.getElementById('processBtn');
-      const files = Array.from(fileInput.files);
+      const clearConsoleBtn = document.getElementById('clearConsole');
+      if (clearConsoleBtn) {
+        clearConsoleBtn.addEventListener('click', () => {
+          const consoleOutput = document.getElementById('consoleOutput');
+          if (consoleOutput) consoleOutput.innerHTML = '';
+        });
+      }
       
-      // 限制文件数量
-      if (files.length > MAX_FILES) {
-        logToConsole(`错误：最多只能上传 ${MAX_FILES} 个文件`, 'error');
-        fileInput.value = '';
+      // 处理按钮点击事件
+      const processBtn = document.getElementById('processBtn');
+      if (processBtn) {
+        processBtn.addEventListener('click', processFiles);
+      }
+    }
+    
+    // 确保DOM完全加载后初始化
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initVBMetaTool);
+    } else {
+      initVBMetaTool();
+    }
+    
+    // 处理拖放的文件
+    function handleDroppedFiles(files) {
+      const validFiles = Array.from(files).filter(file => 
+        file.name.endsWith('.img') || file.name.endsWith('.bin')
+      );
+      
+      if (validFiles.length === 0) {
+        logToConsole('错误：没有有效的.img或.bin文件', 'error');
         return;
       }
       
-      // 清空文件队列
-      fileQueue = [];
+      // 检查文件数量限制
+      const availableSlots = MAX_FILES - fileQueue.length;
+      if (validFiles.length > availableSlots) {
+        logToConsole(`警告：最多只能上传 ${MAX_FILES} 个文件，已选择 ${availableSlots} 个文件`, 'warning');
+        validFiles.splice(availableSlots);
+      }
+      
+      // 添加到文件队列
+      fileQueue = [...fileQueue, ...validFiles];
+      
+      // 更新文件列表显示
+      updateFileListDisplay();
+      
+      // 更新处理按钮状态
+      updateProcessButtonState();
+    }
+    
+    function handleFileSelection() {
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput) return;
+      
+      const files = Array.from(fileInput.files);
+      
+      if (files.length === 0) return;
+      
+      // 检查文件数量限制
+      const availableSlots = MAX_FILES - fileQueue.length;
+      if (files.length > availableSlots) {
+        logToConsole(`警告：最多只能上传 ${MAX_FILES} 个文件，已选择 ${availableSlots} 个文件`, 'warning');
+        files.splice(availableSlots);
+      }
+      
+      // 添加到文件队列
+      fileQueue = [...fileQueue, ...files];
+      
+      // 更新文件列表显示
+      updateFileListDisplay();
+      
+      // 更新处理按钮状态
+      updateProcessButtonState();
+      
+      // 清空文件输入，允许再次选择相同文件
+      fileInput.value = '';
+    }
+    
+    function updateFileListDisplay() {
+      const fileListDiv = document.getElementById('fileList');
+      if (!fileListDiv) return;
+      
       fileListDiv.innerHTML = '';
       
-      if (files.length > 0) {
-        files.forEach(file => {
-          // 添加到文件队列
-          fileQueue.push(file);
-          
+      if (fileQueue.length > 0) {
+        fileQueue.forEach((file, index) => {
           // 显示文件信息
           const fileItem = document.createElement('div');
           fileItem.className = 'file-item';
           fileItem.innerHTML = `
             <span class="file-name">${file.name}</span>
             <span class="file-size">(${formatFileSize(file.size)})</span>
-            <span class="file-status" id="status-${file.name}">等待处理</span>
+            <span class="file-status" id="status-${index}">等待处理</span>
+            <button class="remove-file" data-index="${index}">×</button>
           `;
           fileListDiv.appendChild(fileItem);
         });
         
+        // 添加移除文件的事件监听
+        document.querySelectorAll('.remove-file').forEach(button => {
+          button.addEventListener('click', function() {
+            const index = parseInt(this.getAttribute('data-index'));
+            removeFile(index);
+          });
+        });
+      }
+    }
+    
+    function updateProcessButtonState() {
+      const processBtn = document.getElementById('processBtn');
+      if (!processBtn) return;
+      
+      if (fileQueue.length > 0) {
         processBtn.disabled = false;
         processBtn.classList.remove('disabled');
       } else {
@@ -141,8 +235,17 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       }
     }
     
-    // 处理按钮点击事件
-    document.getElementById('processBtn').addEventListener('click', async function() {
+    function removeFile(index) {
+      if (index >= 0 && index < fileQueue.length) {
+        const removedFile = fileQueue[index].name;
+        fileQueue.splice(index, 1);
+        updateFileListDisplay();
+        updateProcessButtonState();
+        logToConsole(`已移除文件: ${removedFile}，剩余文件数: ${fileQueue.length}`, 'info');
+      }
+    }
+    
+    async function processFiles() {
       if (fileQueue.length === 0) {
         logToConsole('请先选择文件', 'error');
         return;
@@ -150,41 +253,48 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       
       // 禁用处理按钮
       const processBtn = document.getElementById('processBtn');
-      processBtn.disabled = true;
-      processBtn.classList.add('disabled');
+      if (processBtn) {
+        processBtn.disabled = true;
+        processBtn.classList.add('disabled');
+      }
       
       // 清空下载区域
       const downloadArea = document.getElementById('downloadArea');
       const downloadList = document.getElementById('downloadList');
-      downloadArea.style.display = 'none';
-      downloadList.innerHTML = '';
+      if (downloadArea) downloadArea.style.display = 'none';
+      if (downloadList) downloadList.innerHTML = '';
       
       // 显示控制台区域
       logToConsole('开始批量处理文件...', 'info');
       
       // 处理每个文件
-      for (const file of fileQueue) {
+      for (let i = 0; i < fileQueue.length; i++) {
+        const file = fileQueue[i];
         try {
-          await processFile(file);
+          await processFile(file, i);
         } catch (error) {
           logToConsole(`处理 ${file.name} 失败: ${error.message}`, 'error');
-          updateFileStatus(file.name, '处理失败', 'error');
+          updateFileStatus(i, '处理失败', 'error');
         }
       }
       
       logToConsole('所有文件处理完成', 'success');
-      processBtn.disabled = false;
-      processBtn.classList.remove('disabled');
+      
+      // 重新启用处理按钮
+      if (processBtn) {
+        processBtn.disabled = false;
+        processBtn.classList.remove('disabled');
+      }
       
       // 如果有成功处理的文件，显示下载区域
-      if (document.querySelector('.download-item')) {
+      if (downloadArea && document.querySelector('.download-item')) {
         downloadArea.style.display = 'block';
       }
-    });
+    }
     
-    async function processFile(file) {
+    async function processFile(file, index) {
       logToConsole(`开始处理文件: ${file.name}`, 'info');
-      updateFileStatus(file.name, '处理中...', 'processing');
+      updateFileStatus(index, '处理中...', 'processing');
       
       // 读取文件
       const arrayBuffer = await file.arrayBuffer();
@@ -214,12 +324,15 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       logToConsole(`检测到当前状态: Verity ${isVerityDisabled ? '已禁用' : '已启用'}, Verification ${isVerificationDisabled ? '已禁用' : '已启用'}`, 'info');
       
       // 如果已经禁用，跳过处理
-      const disableVerity = document.getElementById('disableVerity').checked;
-      const disableVerification = document.getElementById('disableVerification').checked;
+      const disableVerityElem = document.getElementById('disableVerity');
+      const disableVerificationElem = document.getElementById('disableVerification');
+      
+      const disableVerity = disableVerityElem ? disableVerityElem.checked : true;
+      const disableVerification = disableVerificationElem ? disableVerificationElem.checked : true;
       
       if ((disableVerity && isVerityDisabled) && (disableVerification && isVerificationDisabled)) {
         logToConsole(`文件 ${file.name} 已经禁用所有校验，无需处理`, 'warning');
-        updateFileStatus(file.name, '无需处理', 'warning');
+        updateFileStatus(index, '无需处理', 'warning');
         return;
       }
       
@@ -235,21 +348,22 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       
       dataView.setUint8(flagsOffset, newFlagsByte);
       
-      // 创建新文件
+      // 创建新文件 - 使用原文件名
       const modifiedBlob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
       const downloadUrl = URL.createObjectURL(modifiedBlob);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const downloadFilename = `vbmeta_disabled_${timestamp}.${file.name.split('.').pop()}`;
+      const downloadFilename = file.name; // 直接使用原文件名
       
       // 添加到下载列表
       addToDownloadList(file.name, downloadFilename, downloadUrl);
       
       logToConsole(`文件 ${file.name} 处理成功`, 'success');
-      updateFileStatus(file.name, '处理成功', 'success');
+      updateFileStatus(index, '处理成功', 'success');
     }
     
     function addToDownloadList(originalName, downloadName, downloadUrl) {
       const downloadList = document.getElementById('downloadList');
+      if (!downloadList) return;
+      
       const downloadItem = document.createElement('div');
       downloadItem.className = 'download-item';
       downloadItem.innerHTML = `
@@ -265,13 +379,17 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       
       // 清理URL对象
       const downloadLink = downloadItem.querySelector('a');
-      downloadLink.addEventListener('click', () => {
-        setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
-      });
+      if (downloadLink) {
+        downloadLink.addEventListener('click', () => {
+          setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
+        });
+      }
     }
     
     function logToConsole(message, type = 'info') {
       const consoleOutput = document.getElementById('consoleOutput');
+      if (!consoleOutput) return;
+      
       const logEntry = document.createElement('div');
       logEntry.className = `log-entry ${type}`;
       
@@ -298,8 +416,8 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       consoleOutput.scrollTop = consoleOutput.scrollHeight;
     }
     
-    function updateFileStatus(fileName, status, type) {
-      const statusElement = document.getElementById(`status-${fileName}`);
+    function updateFileStatus(index, status, type) {
+      const statusElement = document.getElementById(`status-${index}`);
       if (statusElement) {
         statusElement.textContent = status;
         statusElement.className = `file-status ${type}`;
@@ -319,6 +437,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       --text-primary: #374151;
       --text-secondary: #6b7280;
       --bg-light: #f9fafb;
+      --bg-container: #ffffff;
       --border-color: #e5e7eb;
       --success-color: #10b981;
       --error-color: #ef4444;
@@ -326,18 +445,73 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       --processing-color: #3b82f6;
     }
     
+    /* 深色模式变量 - 使用更具体的选择器 */
+    .dark .tool-container,
+    [data-theme="dark"] .tool-container,
+    .theme-github-dark .tool-container,
+    .expressive-code-theme-github-dark .tool-container {
+      --text-primary: #e5e7eb;
+      --text-secondary: #9ca3af;
+      --bg-light: #1f2937;
+      --bg-container: #111827;
+      --border-color: #374151;
+    }
+    
+    /* 如果深色模式是应用于html元素 */
+    html.dark .tool-container,
+    html[data-theme="dark"] .tool-container,
+    html.theme-github-dark .tool-container,
+    html.expressive-code-theme-github-dark .tool-container {
+      --text-primary: #e5e7eb;
+      --text-secondary: #9ca3af;
+      --bg-light: #1f2937;
+      --bg-container: #111827;
+      --border-color: #374151;
+    }
+    
     .container {
-      max-width: 800px;
+      max-width: 1200px;
       margin: 2rem auto;
       padding: 1rem;
     }
     
     .tool-container {
-      background: white;
+      background: var(--bg-container);
       border-radius: 12px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
       padding: 2rem;
       margin-top: 1.5rem;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    
+    h1, h3, p {
+      color: var(--text-primary);
+      transition: color 0.3s ease;
+    }
+    
+    /* 左右布局 */
+    .two-column-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+    
+    @media (max-width: 900px) {
+      .two-column-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .left-column {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
     }
     
     .upload-area {
@@ -345,9 +519,9 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       border-radius: 8px;
       padding: 2rem;
       text-align: center;
-      margin-bottom: 1.5rem;
       background-color: var(--bg-light);
       transition: all 0.3s ease;
+      position: relative;
     }
     
     .upload-area.drag-over {
@@ -371,6 +545,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
     .upload-text {
       font-weight: 500;
       margin-bottom: 0.5rem;
+      color: var(--text-primary);
     }
     
     .upload-hint {
@@ -408,11 +583,14 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       background-color: var(--bg-light);
       border-radius: 6px;
       font-size: 0.875rem;
+      border: 1px solid var(--border-color);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .file-name {
       font-weight: 500;
       margin-right: 0.5rem;
+      color: var(--text-primary);
     }
     
     .file-size {
@@ -426,6 +604,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       border-radius: 4px;
       font-size: 0.75rem;
       font-weight: 500;
+      margin-right: 0.5rem;
     }
     
     .file-status.processing {
@@ -448,8 +627,31 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       color: var(--warning-color);
     }
     
+    .remove-file {
+      background: none;
+      border: none;
+      color: var(--error-color);
+      cursor: pointer;
+      font-size: 1.2rem;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    
+    .remove-file:hover {
+      background-color: rgba(239, 68, 68, 0.1);
+    }
+    
     .options-section {
-      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background-color: var(--bg-light);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .options-section h3 {
@@ -473,10 +675,12 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       background-color: var(--bg-light);
       border-radius: 6px;
       transition: background-color 0.2s ease;
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
     }
     
     .options-grid label:hover {
-      background-color: #f3f4f6;
+      background-color: rgba(139, 92, 246, 0.05);
     }
     
     input[type="checkbox"] {
@@ -491,7 +695,6 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       font-size: 1.125rem;
       font-weight: 600;
       background-color: var(--success-color);
-      margin-bottom: 1.5rem;
     }
     
     .process-button:hover {
@@ -508,7 +711,11 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       border: 1px solid var(--border-color);
       border-radius: 8px;
       overflow: hidden;
-      margin-bottom: 1.5rem;
+      background-color: var(--bg-light);
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .console-header {
@@ -518,11 +725,13 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       padding: 0.75rem 1rem;
       background-color: var(--bg-light);
       border-bottom: 1px solid var(--border-color);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .console-header h3 {
       margin: 0;
       font-size: 1rem;
+      color: var(--text-primary);
     }
     
     .clear-button {
@@ -547,6 +756,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       font-family: monospace;
       font-size: 0.875rem;
       line-height: 1.5;
+      flex-grow: 1;
     }
     
     .log-entry {
@@ -586,12 +796,14 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       background-color: var(--bg-light);
       border-radius: 8px;
       padding: 1.5rem;
-      margin-top: 1.5rem;
+      border: 1px solid var(--border-color);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .download-area h3 {
       margin-top: 0;
       margin-bottom: 1rem;
+      color: var(--text-primary);
     }
     
     .download-list {
@@ -605,9 +817,11 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       justify-content: space-between;
       align-items: center;
       padding: 0.75rem;
-      background-color: white;
+      background-color: var(--bg-light);
       border-radius: 6px;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border-color);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
     .download-info {
@@ -618,6 +832,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
     .original-name {
       font-weight: 500;
       font-size: 0.875rem;
+      color: var(--text-primary);
     }
     
     .download-name {
