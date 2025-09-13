@@ -202,12 +202,12 @@ export const navBarConfig: NavBarConfig = {
 					icon: "material-symbols:work",
 				},
 				{
-					name: "VBMeta 工具",
-					url: "/vbmeta-tool/",
+					name: "工具",
+					url: "/tools/",
 					icon: "material-symbols:construction", // 使用与工具相关的图标
 				},
 			],
-		}, // 添加逗号
+		}, 
 	], // 结束 links 数组
 }; // 结束 navBarConfig 对象
 
