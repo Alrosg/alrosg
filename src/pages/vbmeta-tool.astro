@@ -62,13 +62,20 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
           
           <!-- 下载区域 -->
           <div id="downloadArea" class="download-area" style="display: none;">
-            <h3>下载处理后的文件</h3>
+            <div class="download-header">
+              <h3>下载处理后的文件</h3>
+              <button id="downloadAllBtn" class="download-all-button">一键下载全部</button>
+            </div>
             <div id="downloadList" class="download-list"></div>
           </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- 引入JSZip库用于压缩文件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
   <script>
     // 最大文件数量
@@ -77,40 +84,52 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
     // 文件处理队列
     let fileQueue = [];
     
-    // 初始化函数
+    // 存储处理后的文件URLs
+    let processedFiles = [];
+    
+    // 初始化函数 - 使用更可靠的方式
     function initVBMetaTool() {
+      console.log('初始化VBMeta工具');
+      
+      // 使用事件委托来处理动态创建的元素
+      document.addEventListener('click', function(e) {
+        // 处理移除文件按钮
+        if (e.target.classList.contains('remove-file')) {
+          const index = parseInt(e.target.getAttribute('data-index'));
+          removeFile(index);
+        }
+        
+        // 处理选择文件按钮
+        if (e.target.id === 'selectFileBtn') {
+          document.getElementById('fileInput').click();
+        }
+      });
+      
       // 文件选择处理
       const fileInput = document.getElementById('fileInput');
-      const selectFileBtn = document.getElementById('selectFileBtn');
-      
-      if (fileInput && selectFileBtn) {
-        selectFileBtn.addEventListener('click', function() {
-          fileInput.click();
-        });
-        
+      if (fileInput) {
         fileInput.addEventListener('change', handleFileSelection);
       }
       
       // 拖放功能
       const dropZone = document.getElementById('dropZone');
       if (dropZone) {
-        dropZone.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          dropZone.classList.add('drag-over');
+        // 防止默认拖放行为
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, preventDefaults, false);
         });
         
-        dropZone.addEventListener('dragleave', () => {
-          dropZone.classList.remove('drag-over');
+        // 高亮拖放区域
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropZone.addEventListener(eventName, highlight, false);
         });
         
-        dropZone.addEventListener('drop', (e) => {
-          e.preventDefault();
-          dropZone.classList.remove('drag-over');
-          
-          if (e.dataTransfer.files.length) {
-            handleDroppedFiles(e.dataTransfer.files);
-          }
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, unhighlight, false);
         });
+        
+        // 处理拖放文件
+        dropZone.addEventListener('drop', handleDrop, false);
       }
       
       // 清空控制台按钮
@@ -127,13 +146,48 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       if (processBtn) {
         processBtn.addEventListener('click', processFiles);
       }
+      
+      // 一键下载按钮
+      const downloadAllBtn = document.getElementById('downloadAllBtn');
+      if (downloadAllBtn) {
+        downloadAllBtn.addEventListener('click', downloadAllFiles);
+      }
+      
+      console.log('VBMeta工具初始化完成');
+    }
+    
+    // 防止默认拖放行为
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // 高亮拖放区域
+    function highlight() {
+      document.getElementById('dropZone').classList.add('drag-over');
+    }
+    
+    // 取消高亮拖放区域
+    function unhighlight() {
+      document.getElementById('dropZone').classList.remove('drag-over');
+    }
+    
+    // 处理拖放文件
+    function handleDrop(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      
+      if (files.length) {
+        handleDroppedFiles(files);
+      }
     }
     
     // 确保DOM完全加载后初始化
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initVBMetaTool);
     } else {
-      initVBMetaTool();
+      // DOM已经加载完成，直接初始化
+      setTimeout(initVBMetaTool, 100);
     }
     
     // 处理拖放的文件
@@ -211,14 +265,6 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
           `;
           fileListDiv.appendChild(fileItem);
         });
-        
-        // 添加移除文件的事件监听
-        document.querySelectorAll('.remove-file').forEach(button => {
-          button.addEventListener('click', function() {
-            const index = parseInt(this.getAttribute('data-index'));
-            removeFile(index);
-          });
-        });
       }
     }
     
@@ -264,6 +310,9 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       if (downloadArea) downloadArea.style.display = 'none';
       if (downloadList) downloadList.innerHTML = '';
       
+      // 清空已处理文件列表
+      processedFiles = [];
+      
       // 显示控制台区域
       logToConsole('开始批量处理文件...', 'info');
       
@@ -287,7 +336,7 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       }
       
       // 如果有成功处理的文件，显示下载区域
-      if (downloadArea && document.querySelector('.download-item')) {
+      if (downloadArea && processedFiles.length > 0) {
         downloadArea.style.display = 'block';
       }
     }
@@ -356,6 +405,14 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       // 添加到下载列表
       addToDownloadList(file.name, downloadFilename, downloadUrl);
       
+      // 存储处理后的文件信息
+      processedFiles.push({
+        originalName: file.name,
+        downloadName: downloadFilename,
+        downloadUrl: downloadUrl,
+        blob: modifiedBlob
+      });
+      
       logToConsole(`文件 ${file.name} 处理成功`, 'success');
       updateFileStatus(index, '处理成功', 'success');
     }
@@ -369,7 +426,6 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       downloadItem.innerHTML = `
         <div class="download-info">
           <span class="original-name">${originalName}</span>
-          <span class="download-name">${downloadName}</span>
         </div>
         <a href="${downloadUrl}" download="${downloadName}" class="download-button">
           下载
@@ -383,6 +439,43 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
         downloadLink.addEventListener('click', () => {
           setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
         });
+      }
+    }
+    
+    // 一键下载所有文件
+    async function downloadAllFiles() {
+      if (processedFiles.length === 0) {
+        logToConsole('没有可下载的文件', 'warning');
+        return;
+      }
+      
+      logToConsole('开始打包所有文件...', 'info');
+      
+      try {
+        // 使用JSZip创建ZIP文件
+        const zip = new JSZip();
+        
+        // 添加所有文件到ZIP
+        for (const file of processedFiles) {
+          zip.file(file.downloadName, file.blob);
+        }
+        
+        // 生成ZIP文件
+        const zipContent = await zip.generateAsync({type: 'blob'});
+        
+        // 创建下载链接
+        const zipUrl = URL.createObjectURL(zipContent);
+        const zipFilename = 'vbmeta_files.zip';
+        
+        // 触发下载
+        saveAs(zipContent, zipFilename);
+        
+        logToConsole('所有文件已打包完成并开始下载', 'success');
+        
+        // 清理URL对象
+        setTimeout(() => URL.revokeObjectURL(zipUrl), 100);
+      } catch (error) {
+        logToConsole(`打包文件失败: ${error.message}`, 'error');
       }
     }
     
@@ -800,10 +893,30 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     
-    .download-area h3 {
-      margin-top: 0;
+    .download-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 1rem;
+    }
+    
+    .download-header h3 {
+      margin: 0;
       color: var(--text-primary);
+    }
+    
+    .download-all-button {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    
+    .download-all-button:hover {
+      background-color: #7c3aed;
     }
     
     .download-list {
@@ -833,11 +946,6 @@ const description = "批量处理禁用校验的 vbmeta 镜像文件";
       font-weight: 500;
       font-size: 0.875rem;
       color: var(--text-primary);
-    }
-    
-    .download-name {
-      color: var(--text-secondary);
-      font-size: 0.75rem;
     }
     
     .download-button {
